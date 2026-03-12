@@ -397,3 +397,62 @@ test "interp: applying a number" {
     const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
     try std.testing.expectError(error.NotAFunction, interp_mod.topInterp(arena.allocator(), expr));
 }
+
+// SZMX4: {{fun (x) => {* x x}} 5}  =>  "25"
+test "interp: {{fun (x) => {* x x}} 5} = 25" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // body: {* x x}
+    const mult_args = try alloc.alloc(*Expr, 2);
+    mult_args[0] = try makeExpr(alloc, Expr{ .id = "x" });
+    mult_args[1] = try makeExpr(alloc, Expr{ .id = "x" });
+    const body = try makeExpr(alloc, Expr{ .app = .{
+        .func = try makeExpr(alloc, Expr{ .id = "*" }),
+        .args = mult_args,
+    } });
+
+    // {fun (x) => body}
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "x";
+    const fun = try makeExpr(alloc, Expr{ .fun_expr = .{ .params = params, .body = body } });
+
+    // apply to 5
+    const call_args = try alloc.alloc(*Expr, 1);
+    call_args[0] = try makeExpr(alloc, Expr{ .num = 5.0 });
+    const expr = try makeExpr(alloc, Expr{ .app = .{ .func = fun, .args = call_args } });
+
+    const result = try interp_mod.topInterp(alloc, expr);
+    try std.testing.expectEqualStrings("25", result);
+}
+
+// SZMX4: {let {[x = 10]} in {+ x 5}}  =>  "15"
+// desugars to: {{fun (x) => {+ x 5}} 10}
+test "interp: let desugared to lambda application" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    // body: {+ x 5}
+    const body_args = try alloc.alloc(*Expr, 2);
+    body_args[0] = try makeExpr(alloc, Expr{ .id = "x" });
+    body_args[1] = try makeExpr(alloc, Expr{ .num = 5.0 });
+    const body = try makeExpr(alloc, Expr{ .app = .{
+        .func = try makeExpr(alloc, Expr{ .id = "+" }),
+        .args = body_args,
+    } });
+
+    // {fun (x) => body}
+    const params = try alloc.alloc([]const u8, 1);
+    params[0] = "x";
+    const fun = try makeExpr(alloc, Expr{ .fun_expr = .{ .params = params, .body = body } });
+
+    // apply to 10
+    const call_args = try alloc.alloc(*Expr, 1);
+    call_args[0] = try makeExpr(alloc, Expr{ .num = 10.0 });
+    const expr = try makeExpr(alloc, Expr{ .app = .{ .func = fun, .args = call_args } });
+
+    const result = try interp_mod.topInterp(alloc, expr);
+    try std.testing.expectEqualStrings("15", result);
+}
