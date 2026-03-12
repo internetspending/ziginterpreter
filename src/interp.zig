@@ -14,16 +14,16 @@ pub const InterpError = error{
     TypeError,
     DivisionByZero,
     NotAFunction,
+    UserError,
     OutOfMemory,
 };
 
 /// Evaluates an expression in the given environment and returns its value.
 /// @params `allocator` is used for allocating argument arrays during function application.
 /// `expr` - expression to evaluate
-/// `env` - environment 
+/// `env` - environment
 pub fn interp(allocator: std.mem.Allocator, expr: *const Expr, env: *const Env) InterpError!Value {
     switch (expr.*) {
-
         // wraps the raw number or string in a Value and returns it.
         .num => |n| return Value{ .num = n },
         .str => |s| return Value{ .str = s },
@@ -94,6 +94,38 @@ fn applyValue(allocator: std.mem.Allocator, func: Value, args: []const Value) In
     }
 }
 
+fn expectNum(v: Value) InterpError!f64 {
+    return switch (v) {
+        .num => |n| n,
+        else => error.TypeError,
+    };
+}
+
+fn expectStr(v: Value) InterpError![]const u8 {
+    return switch (v) {
+        .str => |s| s,
+        else => error.TypeError,
+    };
+}
+
+fn valueEqual(a: Value, b: Value) bool {
+    return switch (a) {
+        .num => |n1| switch (b) {
+            .num => |n2| n1 == n2,
+            else => false,
+        },
+        .boolean => |b1| switch (b) {
+            .boolean => |b2| b1 == b2,
+            else => false,
+        },
+        .str => |s1| switch (b) {
+            .str => |s2| std.mem.eql(u8, s1, s2),
+            else => false,
+        },
+        else => false,
+    };
+}
+
 /// Handles the built-in primitive operations.
 fn applyPrimop(op: PrimOp, args: []const Value) InterpError!Value {
     switch (op) {
@@ -119,7 +151,6 @@ fn applyPrimop(op: PrimOp, args: []const Value) InterpError!Value {
             return Value{ .num = a * b };
         },
 
-        // Returns DivisionByZero if the second argument is 0.
         .div => {
             if (args.len != 2) return error.ArityMismatch;
             const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
@@ -128,14 +159,57 @@ fn applyPrimop(op: PrimOp, args: []const Value) InterpError!Value {
             return Value{ .num = a / b };
         },
 
-        // Not Implemented yet: <=, substring, strlen, equal?, error
-        .leq => return error.NotAFunction,
-        .strlen => return error.NotAFunction,
+        .leq => {
+            if (args.len != 2) return error.ArityMismatch;
+            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
+            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            return Value{ .boolean = a <= b };
+        },
+
+        .strlen => {
+            if (args.len != 1) return error.ArityMismatch;
+            const s = switch (args[0]) { .str => |str| str, else => return error.TypeError };
+            return Value{ .num = @as(f64, @floatFromInt(s.len)) };
+        },
+
         .substring => return error.NotAFunction,
-        .equal_huh => return error.NotAFunction,
-        .error_fn => return error.NotAFunction,
+
+        .equal_huh => {
+            if (args.len != 2) return error.ArityMismatch;
+
+            switch (args[0]) {
+                .num => |a| {
+                    const b = switch (args[1]) {
+                        .num => |n| n,
+                        else => return Value{ .boolean = false },
+                    };
+                    return Value{ .boolean = a == b };
+                },
+                .boolean => |a| {
+                    const b = switch (args[1]) {
+                        .boolean => |bv| bv,
+                        else => return Value{ .boolean = false },
+                    };
+                    return Value{ .boolean = a == b };
+                },
+                .str => |a| {
+                    const b = switch (args[1]) {
+                        .str => |sv| sv,
+                        else => return Value{ .boolean = false },
+                    };
+                    return Value{ .boolean = std.mem.eql(u8, a, b) };
+                },
+                else => return Value{ .boolean = false },
+            }
+        },
+
+        .error_fn => {
+            if (args.len != 1) return error.ArityMismatch;
+            return error.UserError;
+        },
     }
 }
+
 pub fn topInterp(allocator: std.mem.Allocator, expr: *const Expr) ![]const u8 {
     const top_env = try env_mod.makeTopEnv(allocator);
     const result = try interp(allocator, expr, top_env);
