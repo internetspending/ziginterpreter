@@ -129,50 +129,98 @@ fn valueEqual(a: Value, b: Value) bool {
 /// Handles the built-in primitive operations.
 fn applyPrimop(op: PrimOp, args: []const Value) InterpError!Value {
     switch (op) {
-        
         .plus => {
             if (args.len != 2) return error.ArityMismatch;
-            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
-            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            const a = switch (args[0]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
+            const b = switch (args[1]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
             return Value{ .num = a + b };
         },
 
         .minus => {
             if (args.len != 2) return error.ArityMismatch;
-            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
-            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            const a = switch (args[0]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
+            const b = switch (args[1]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
             return Value{ .num = a - b };
         },
 
         .times => {
             if (args.len != 2) return error.ArityMismatch;
-            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
-            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            const a = switch (args[0]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
+            const b = switch (args[1]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
             return Value{ .num = a * b };
         },
 
         .div => {
             if (args.len != 2) return error.ArityMismatch;
-            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
-            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            const a = switch (args[0]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
+            const b = switch (args[1]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
             if (b == 0) return error.DivisionByZero;
             return Value{ .num = a / b };
         },
 
         .leq => {
             if (args.len != 2) return error.ArityMismatch;
-            const a = switch (args[0]) { .num => |n| n, else => return error.TypeError };
-            const b = switch (args[1]) { .num => |n| n, else => return error.TypeError };
+            const a = switch (args[0]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
+            const b = switch (args[1]) {
+                .num => |n| n,
+                else => return error.TypeError,
+            };
             return Value{ .boolean = a <= b };
         },
 
         .strlen => {
             if (args.len != 1) return error.ArityMismatch;
-            const s = switch (args[0]) { .str => |str| str, else => return error.TypeError };
+            const s = switch (args[0]) {
+                .str => |str| str,
+                else => return error.TypeError,
+            };
             return Value{ .num = @as(f64, @floatFromInt(s.len)) };
         },
 
-        .substring => return error.NotAFunction,
+        .substring => {
+            if (args.len != 3) return error.ArityMismatch;
+            const s = switch (args[0]) {
+                .str => |str| str,
+                else => return error.TypeError,
+            };
+            const start = switch (args[1]) {
+                .num => |n| @as(usize, n),
+                else => return error.TypeError,
+            };
+            const stop = switch (args[2]) {
+                .num => |n| @as(usize, n),
+                else => return error.TypeError,
+            };
+            if (start > stop or stop > s.len) return error.TypeError;
+            return Value{ .str = s[start..stop] };
+        },
 
         .equal_huh => {
             if (args.len != 2) return error.ArityMismatch;
@@ -201,6 +249,57 @@ fn applyPrimop(op: PrimOp, args: []const Value) InterpError!Value {
                 },
                 else => return Value{ .boolean = false },
             }
+        },
+
+        .aref => {
+            if (args.len != 2) return error.ArityMismatch;
+            const arr = switch (args[0]) {
+                .closure => |c| c.params,
+                else => return error.TypeError,
+            };
+            const index = switch (args[1]) {
+                .num => |n| @as(usize, n),
+                else => return error.TypeError,
+            };
+            if (index >= arr.len) return error.TypeError;
+            return Value{ .str = arr[index] };
+        },
+
+        .aset => {
+            if (args.len != 3) return error.ArityMismatch;
+            const arr = switch (args[0]) {
+                .closure => |c| c.params,
+                else => return error.TypeError,
+            };
+            const index = switch (args[1]) {
+                .num => |n| @as(usize, n),
+                else => return error.TypeError,
+            };
+            if (index >= arr.len) return error.TypeError;
+            const new_val = switch (args[2]) {
+                .str => |s| s,
+                else => return error.TypeError,
+            };
+
+            arr[index] = new_val;
+            return Value{
+                .closure = .{
+                    .params = arr,
+                    .body = null, // body and env are not relevant for this primop
+                    .env = null,
+                },
+            };
+        },
+
+        .seq => {
+            if (args.len != 2) return error.ArityMismatch;
+            // evaluate first expression, ignoring its value
+            _ = args[0];
+
+            // Return the value of the second expression, interp should have alreayd evaluated it
+            // before passing to applyPrimop so no need to really do anything else
+
+            return args[1];
         },
 
         .error_fn => {

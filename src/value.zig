@@ -13,6 +13,10 @@ pub const PrimOp = enum {
     strlen, // (strlen s) -> real
     equal_huh, // (equal? a b) -> boolean
     error_fn, // (error v) -> nothing
+    aref, // (aref arr i) -> value
+    aset, // (aset arr i v) -> arr
+    seq, // (seq e1 e2) -> value of e2
+
 };
 
 /// Env is defined here alongside Value to avoid circular imports,
