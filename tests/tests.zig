@@ -3,6 +3,7 @@ const ast = @import("../src/ast.zig");
 const value = @import("../src/value.zig");
 const env = @import("../src/env.zig");
 const examples = @import("../examples.zig");
+const interp_mod = @import("../src/interp.zig");
 
 const Expr = ast.Expr;
 const makeExpr = ast.makeExpr;
@@ -217,4 +218,182 @@ test "buildIdentityApp: app of identity fun to 5" {
     try std.testing.expect(expr.app.func.* == .fun_expr);
     try std.testing.expectEqual(@as(usize, 1), expr.app.args.len);
     try std.testing.expectEqual(@as(f64, 5.0), expr.app.args[0].num);
+}
+
+
+// ---------------------------------------------------------------------------
+// interp tests 
+// ---------------------------------------------------------------------------
+
+test "interp: number 5" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const expr = try makeExpr(arena.allocator(), Expr{ .num = 5.0 });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("5", result);
+}
+
+test "interp: string hello" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const expr = try makeExpr(arena.allocator(), Expr{ .str = "hello" });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("\"hello\"", result);
+}
+
+test "interp: true" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const expr = try makeExpr(arena.allocator(), Expr{ .id = "true" });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("true", result);
+}
+
+test "interp: false" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const expr = try makeExpr(arena.allocator(), Expr{ .id = "false" });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("false", result);
+}
+
+test "interp: {+ 2 3} = 5" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "+" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 2.0 });
+    const b = try makeExpr(arena.allocator(), Expr{ .num = 3.0 });
+    const args = try arena.allocator().alloc(*Expr, 2);
+    args[0] = a;
+    args[1] = b;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("5", result);
+}
+
+test "interp: {- 10 4} = 6" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "-" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 10.0 });
+    const b = try makeExpr(arena.allocator(), Expr{ .num = 4.0 });
+    const args = try arena.allocator().alloc(*Expr, 2);
+    args[0] = a;
+    args[1] = b;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("6", result);
+}
+
+test "interp: {* 3 7} = 21" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "*" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 3.0 });
+    const b = try makeExpr(arena.allocator(), Expr{ .num = 7.0 });
+    const args = try arena.allocator().alloc(*Expr, 2);
+    args[0] = a;
+    args[1] = b;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("21", result);
+}
+
+test "interp: {/ 15 3} = 5" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "/" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 15.0 });
+    const b = try makeExpr(arena.allocator(), Expr{ .num = 3.0 });
+    const args = try arena.allocator().alloc(*Expr, 2);
+    args[0] = a;
+    args[1] = b;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("5", result);
+}
+
+test "interp: {if true 1 2} = 1" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cond = try makeExpr(arena.allocator(), Expr{ .id = "true" });
+    const then_e = try makeExpr(arena.allocator(), Expr{ .num = 1.0 });
+    const else_e = try makeExpr(arena.allocator(), Expr{ .num = 2.0 });
+    const expr = try makeExpr(arena.allocator(), Expr{ .if_expr = .{
+        .test_expr = cond,
+        .then_expr = then_e,
+        .else_expr = else_e,
+    } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("1", result);
+}
+
+test "interp: {if false 1 2} = 2" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const cond = try makeExpr(arena.allocator(), Expr{ .id = "false" });
+    const then_e = try makeExpr(arena.allocator(), Expr{ .num = 1.0 });
+    const else_e = try makeExpr(arena.allocator(), Expr{ .num = 2.0 });
+    const expr = try makeExpr(arena.allocator(), Expr{ .if_expr = .{
+        .test_expr = cond,
+        .then_expr = then_e,
+        .else_expr = else_e,
+    } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("2", result);
+}
+
+test "interp: identity function applied to 5" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const body = try makeExpr(arena.allocator(), Expr{ .id = "x" });
+    const params = try arena.allocator().alloc([]const u8, 1);
+    params[0] = "x";
+    const fun = try makeExpr(arena.allocator(), Expr{ .fun_expr = .{ .params = params, .body = body } });
+    const five = try makeExpr(arena.allocator(), Expr{ .num = 5.0 });
+    const args = try arena.allocator().alloc(*Expr, 1);
+    args[0] = five;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = fun, .args = args } });
+    const result = try interp_mod.topInterp(arena.allocator(), expr);
+    try std.testing.expectEqualStrings("5", result);
+}
+
+test "interp: unbound identifier" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const expr = try makeExpr(arena.allocator(), Expr{ .id = "x" });
+    try std.testing.expectError(error.UnboundIdentifier, interp_mod.topInterp(arena.allocator(), expr));
+}
+
+test "interp: division by zero" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "/" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 5.0 });
+    const b = try makeExpr(arena.allocator(), Expr{ .num = 0.0 });
+    const args = try arena.allocator().alloc(*Expr, 2);
+    args[0] = a;
+    args[1] = b;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    try std.testing.expectError(error.DivisionByZero, interp_mod.topInterp(arena.allocator(), expr));
+}
+
+test "interp: wrong arity" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .id = "+" });
+    const a = try makeExpr(arena.allocator(), Expr{ .num = 1.0 });
+    const args = try arena.allocator().alloc(*Expr, 1);
+    args[0] = a;
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    try std.testing.expectError(error.ArityMismatch, interp_mod.topInterp(arena.allocator(), expr));
+}
+
+test "interp: applying a number" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const func = try makeExpr(arena.allocator(), Expr{ .num = 5.0 });
+    const args = try arena.allocator().alloc(*Expr, 0);
+    const expr = try makeExpr(arena.allocator(), Expr{ .app = .{ .func = func, .args = args } });
+    try std.testing.expectError(error.NotAFunction, interp_mod.topInterp(arena.allocator(), expr));
 }
